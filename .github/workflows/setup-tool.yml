@@ -1,0 +1,54 @@
+# Builds the setup tool for Windows, macOS and Linux, each on its own machine: PyInstaller does not
+# cross-compile. The tool carries QuickJS (runs the game's own data scripts) and ffmpeg (chest videos),
+# so the people using it install nothing.
+name: Setup tool
+
+on:
+  push:
+    paths:
+      - "tools/vs_setup.py"
+      - "tools/extract_core.js"
+      - "sce_sys/icon0.png"
+      - ".github/workflows/setup-tool.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            name: VampireSurvivorsSetup-Windows
+          - os: macos-latest
+            name: VampireSurvivorsSetup-macOS
+          - os: ubuntu-latest
+            name: VampireSurvivorsSetup-Linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependencies
+        run: pip install pyinstaller quickjs imageio-ffmpeg pillow
+
+      - name: Self-test
+        run: |
+          python -c "import quickjs, imageio_ffmpeg, os; c = quickjs.Context(); c.eval(open('tools/extract_core.js').read()); assert os.path.isfile(imageio_ffmpeg.get_ffmpeg_exe())"
+          python tools/vs_setup.py find
+
+      - name: Build
+        run: |
+          SEP=":"; [ "$RUNNER_OS" = "Windows" ] && SEP=";"
+          pyinstaller --onefile --windowed --name ${{ matrix.name }} --icon sce_sys/icon0.png \
+            --add-data "tools/extract_core.js${SEP}." --collect-binaries imageio_ffmpeg --collect-all quickjs tools/vs_setup.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/*

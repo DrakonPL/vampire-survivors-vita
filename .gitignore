@@ -1,0 +1,11 @@
+build*/
+*.vpk
+vsproto
+autoshot.png
+autoshot.log
+gamedata/
+vs
+shot*.png
+run.log
+vs_dbg.dSYM/
+__pycache__/

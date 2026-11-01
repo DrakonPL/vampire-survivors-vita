@@ -1,0 +1,292 @@
+--- a/src/rlgl.h	2026-05-23 11:31:06
++++ b/src/rlgl.h	2026-11-01 22:49:06
+@@ -406,6 +406,7 @@
+     //unsigned int vaoId;       // Vertex array id to be used on the draw -> Using RLGL.currentBatch->vertexBuffer.vaoId
+     //unsigned int shaderId;    // Shader id to be used on the draw -> Using RLGL.currentShaderId
+     unsigned int textureId;     // Texture id to be used on the draw -> Use to create new draw call if changes
++    int blendMode;              // VITA: blend mode of this draw -> new draw call if changes (no batch flush)
+ 
+     //Matrix projection;        // Projection matrix for this draw -> Using RLGL.projection by default
+     //Matrix modelview;         // Modelview matrix for this draw -> Using RLGL.modelview by default
+@@ -620,6 +621,7 @@
+ RLAPI void rlVertex2i(int x, int y);                    // Define one vertex (position) - 2 int
+ RLAPI void rlVertex2f(float x, float y);                // Define one vertex (position) - 2 float
+ RLAPI void rlVertex3f(float x, float y, float z);       // Define one vertex (position) - 3 float
++RLAPI void rlQuad4(const float *xy, const float *uv);  // VS: 4 vertici di un RL_QUADS in un colpo (colore e normale correnti)
+ RLAPI void rlTexCoord2f(float x, float y);              // Define one vertex (texture coordinate) - 2 float
+ RLAPI void rlNormal3f(float x, float y, float z);       // Define one vertex (normal) - 3 float
+ RLAPI void rlColor4ub(unsigned char r, unsigned char g, unsigned char b, unsigned char a); // Define one vertex (color) - 4 byte
+@@ -1370,6 +1372,7 @@
+ //----------------------------------------------------------------------------------
+ // Module Functions Definition - Vertex level operations
+ //----------------------------------------------------------------------------------
++static unsigned int rlRequestedTextureId = 0;  // VITA: texture chiesta da rlSetTexture, la usa il prossimo rlBegin (come raylib 6)
+ #if defined(GRAPHICS_API_OPENGL_11)
+ // Fallback to OpenGL 1.1 function calls
+ //---------------------------------------
+@@ -1424,7 +1427,10 @@
+ 
+         RLGL.currentBatch->draws[RLGL.currentBatch->drawCounter - 1].mode = mode;
+         RLGL.currentBatch->draws[RLGL.currentBatch->drawCounter - 1].vertexCount = 0;
+-        RLGL.currentBatch->draws[RLGL.currentBatch->drawCounter - 1].textureId = RLGL.State.defaultTextureId;
++        // VITA: raylib 5.5 rimetteva sempre la texture di default: DrawTexturePro (rlSetTexture, poi rlBegin(RL_QUADS)) dopo una
++        // draw call TRIANGLES vuota disegnava lo sprite bianco. Le forme senza rlSetTexture restano sulla texture di default.
++        RLGL.currentBatch->draws[RLGL.currentBatch->drawCounter - 1].textureId = rlRequestedTextureId ? rlRequestedTextureId : RLGL.State.defaultTextureId;
++        RLGL.currentBatch->draws[RLGL.currentBatch->drawCounter - 1].blendMode = RLGL.State.currentBlendMode;
+     }
+ }
+ 
+@@ -1516,6 +1522,41 @@
+ 
+ // Define one vertex (texture coordinate)
+ // NOTE: Texture coordinates are limited to QUADS only
++// VS (Vita): i 4 vertici di un quad in un colpo, dopo rlBegin(RL_QUADS). Stesso effetto di 4 rlTexCoord2f + rlVertex2f
++// (trasformazione, profondita', normale e colore correnti), senza 4 chiamate fra file diversi: sulla Vita il percorso per
++// vertice costava ~3,5 us a quad (misurato 2026-11-01 con VS_BENCH=quads2000)
++void rlQuad4(const float *xy, const float *uv)
++{
++    if (RLGL.State.vertexCounter > (RLGL.currentBatch->vertexBuffer[RLGL.currentBatch->currentBuffer].elementCount*4 - 4)) rlCheckRenderBatchLimit(4 + 1);
++    rlVertexBuffer *vb = &RLGL.currentBatch->vertexBuffer[RLGL.currentBatch->currentBuffer];
++    int n = RLGL.State.vertexCounter;
++    float z = RLGL.currentBatch->currentDepth;
++    const Matrix t = RLGL.State.transform;  // campi per nome: Matrix e' m0, m4, m8, m12, m1... (non un array in ordine)
++    int tr = RLGL.State.transformRequired;
++    for (int k = 0; k < 4; k++, n++)
++    {
++        float x = xy[2*k], y = xy[2*k + 1];
++        if (tr)
++        {
++            vb->vertices[3*n] = t.m0*x + t.m4*y + t.m8*z + t.m12;
++            vb->vertices[3*n + 1] = t.m1*x + t.m5*y + t.m9*z + t.m13;
++            vb->vertices[3*n + 2] = t.m2*x + t.m6*y + t.m10*z + t.m14;
++        }
++        else { vb->vertices[3*n] = x; vb->vertices[3*n + 1] = y; vb->vertices[3*n + 2] = z; }
++        vb->texcoords[2*n] = uv[2*k];
++        vb->texcoords[2*n + 1] = uv[2*k + 1];
++        vb->normals[3*n] = RLGL.State.normalx;
++        vb->normals[3*n + 1] = RLGL.State.normaly;
++        vb->normals[3*n + 2] = RLGL.State.normalz;
++        vb->colors[4*n] = RLGL.State.colorr;
++        vb->colors[4*n + 1] = RLGL.State.colorg;
++        vb->colors[4*n + 2] = RLGL.State.colorb;
++        vb->colors[4*n + 3] = RLGL.State.colora;
++    }
++    RLGL.State.vertexCounter = n;
++    RLGL.currentBatch->draws[RLGL.currentBatch->drawCounter - 1].vertexCount += 4;
++}
++
+ void rlTexCoord2f(float x, float y)
+ {
+     RLGL.State.texcoordx = x;
+@@ -1578,6 +1619,7 @@
+ // Set current texture to use
+ void rlSetTexture(unsigned int id)
+ {
++    rlRequestedTextureId = id;
+     if (id == 0)
+     {
+ #if defined(GRAPHICS_API_OPENGL_11)
+@@ -1621,6 +1663,7 @@
+ 
+             RLGL.currentBatch->draws[RLGL.currentBatch->drawCounter - 1].textureId = id;
+             RLGL.currentBatch->draws[RLGL.currentBatch->drawCounter - 1].vertexCount = 0;
++            RLGL.currentBatch->draws[RLGL.currentBatch->drawCounter - 1].blendMode = RLGL.State.currentBlendMode;
+         }
+ #endif
+     }
+@@ -2042,13 +2085,18 @@
+ }
+ 
+ // Set blend mode
+-void rlSetBlendMode(int mode)
++// VITA (vitaGL): su Vita costa lo svuotamento del batch (~0.5 ms l'uno), non glBlendFunc. Il modo di miscela
++// diventa uno stato della draw call come la texture: cambiarlo apre una nuova draw call nello stesso batch, e
++// rlDrawRenderBatch chiama glBlendFunc tra una glDrawElements e l'altra, solo se diverso dall'ultimo applicato.
++// I modi CUSTOM svuotano ancora il batch: i loro fattori sono globali, non per draw call.
++// semplificazione: chi disegna fuori dal batch (rlDrawVertexArray*, DrawMesh) trova lo stato GL dell'ultimo batch, non
++// currentBlendMode; chiamare rlApplyBlendMode(RLGL.State.currentBlendMode) li' se servisse.
++static int rlAppliedBlendMode = -1;
++static void rlApplyBlendMode(int mode)
+ {
+ #if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_ES2)
+-    if ((RLGL.State.currentBlendMode != mode) || ((mode == RL_BLEND_CUSTOM || mode == RL_BLEND_CUSTOM_SEPARATE) && RLGL.State.glCustomBlendModeModified))
++    if ((rlAppliedBlendMode != mode) || ((mode == RL_BLEND_CUSTOM || mode == RL_BLEND_CUSTOM_SEPARATE) && RLGL.State.glCustomBlendModeModified))
+     {
+-        rlDrawRenderBatch(RLGL.currentBatch);
+-
+         switch (mode)
+         {
+             case RL_BLEND_ALPHA: glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); glBlendEquation(GL_FUNC_ADD); break;
+@@ -2073,8 +2121,44 @@
+             default: break;
+         }
+ 
+-        RLGL.State.currentBlendMode = mode;
++        rlAppliedBlendMode = mode;
+         RLGL.State.glCustomBlendModeModified = false;
++    }
++#endif
++}
++
++void rlSetBlendMode(int mode)
++{
++#if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_ES2)
++    if ((RLGL.State.currentBlendMode != mode) || ((mode == RL_BLEND_CUSTOM || mode == RL_BLEND_CUSTOM_SEPARATE) && RLGL.State.glCustomBlendModeModified))
++    {
++        rlRenderBatch *b = RLGL.currentBatch;
++        rlDrawCall *d = &b->draws[b->drawCounter - 1];
++        bool custom = (mode == RL_BLEND_CUSTOM) || (mode == RL_BLEND_CUSTOM_SEPARATE) ||
++                      (RLGL.State.currentBlendMode == RL_BLEND_CUSTOM) || (RLGL.State.currentBlendMode == RL_BLEND_CUSTOM_SEPARATE);
++        if (custom) { if (RLGL.State.vertexCounter > 0) rlDrawRenderBatch(b); }
++        else if (d->vertexCount > 0)
++        {
++            // Nuova draw call, stesso allineamento di rlSetTexture()
++            int texture = d->textureId, drawMode = d->mode;
++            if (d->mode == RL_LINES) d->vertexAlignment = ((d->vertexCount < 4)? d->vertexCount : d->vertexCount%4);
++            else if (d->mode == RL_TRIANGLES) d->vertexAlignment = ((d->vertexCount < 4)? 1 : (4 - (d->vertexCount%4)));
++            else d->vertexAlignment = 0;
++
++            if (!rlCheckRenderBatchLimit(d->vertexAlignment))
++            {
++                RLGL.State.vertexCounter += d->vertexAlignment;
++                b->drawCounter++;
++            }
++            if (b->drawCounter >= RL_DEFAULT_BATCH_DRAWCALLS) rlDrawRenderBatch(b);
++
++            d = &b->draws[b->drawCounter - 1];
++            d->mode = drawMode;
++            d->textureId = texture;
++            d->vertexCount = 0;
++        }
++        RLGL.State.currentBlendMode = mode;
++        b->draws[b->drawCounter - 1].blendMode = mode;
+     }
+ #endif
+ }
+@@ -2087,6 +2171,7 @@
+         (RLGL.State.glBlendDstFactor != glDstFactor) ||
+         (RLGL.State.glBlendEquation != glEquation))
+     {
++        if (RLGL.State.currentBlendMode == RL_BLEND_CUSTOM && RLGL.State.vertexCounter > 0) rlDrawRenderBatch(RLGL.currentBatch);
+         RLGL.State.glBlendSrcFactor = glSrcFactor;
+         RLGL.State.glBlendDstFactor = glDstFactor;
+         RLGL.State.glBlendEquation = glEquation;
+@@ -2107,6 +2192,7 @@
+         (RLGL.State.glBlendEquationRGB != glEqRGB) ||
+         (RLGL.State.glBlendEquationAlpha != glEqAlpha))
+     {
++        if (RLGL.State.currentBlendMode == RL_BLEND_CUSTOM_SEPARATE && RLGL.State.vertexCounter > 0) rlDrawRenderBatch(RLGL.currentBatch);
+         RLGL.State.glBlendSrcFactorRGB = glSrcRGB;
+         RLGL.State.glBlendDestFactorRGB = glDstRGB;
+         RLGL.State.glBlendSrcFactorAlpha = glSrcAlpha;
+@@ -2790,6 +2876,7 @@
+         //batch.draws[i].vaoId = 0;
+         //batch.draws[i].shaderId = 0;
+         batch.draws[i].textureId = RLGL.State.defaultTextureId;
++        batch.draws[i].blendMode = RLGL.State.currentBlendMode;
+         //batch.draws[i].RLGL.State.projection = rlMatrixIdentity();
+         //batch.draws[i].RLGL.State.modelview = rlMatrixIdentity();
+     }
+@@ -2874,8 +2961,10 @@
+         //glBufferData(GL_ARRAY_BUFFER, sizeof(float)*2*4*batch->vertexBuffer[batch->currentBuffer].elementCount, batch->vertexBuffer[batch->currentBuffer].texcoords, GL_DYNAMIC_DRAW); // Update all buffer
+ 
+         // Normals buffer
++#if !defined(PLATFORM_VITA)  // VS: gli shader 2D non leggono le normali, e vitaGL ricopiava 12 byte a vertice a ogni svuotamento
+         glBindBuffer(GL_ARRAY_BUFFER, batch->vertexBuffer[batch->currentBuffer].vboId[2]);
+         glBufferSubData(GL_ARRAY_BUFFER, 0, RLGL.State.vertexCounter*3*sizeof(float), batch->vertexBuffer[batch->currentBuffer].normals);
++#endif
+         //glBufferData(GL_ARRAY_BUFFER, sizeof(float)*3*4*batch->vertexBuffer[batch->currentBuffer].elementCount, batch->vertexBuffer[batch->currentBuffer].normals, GL_DYNAMIC_DRAW); // Update all buffer
+ 
+         // Colors buffer
+@@ -3006,6 +3095,7 @@
+             {
+                 // Bind current draw call texture, activated as GL_TEXTURE0 and Bound to sampler2D texture0 by default
+                 glBindTexture(GL_TEXTURE_2D, batch->draws[i].textureId);
++                rlApplyBlendMode(batch->draws[i].blendMode);  // VITA: GL solo se diverso dall'ultimo applicato
+ 
+                 if ((batch->draws[i].mode == RL_LINES) || (batch->draws[i].mode == RL_TRIANGLES)) glDrawArrays(batch->draws[i].mode, vertexOffset, batch->draws[i].vertexCount);
+                 else
+@@ -3060,6 +3150,7 @@
+         batch->draws[i].mode = RL_QUADS;
+         batch->draws[i].vertexCount = 0;
+         batch->draws[i].textureId = RLGL.State.defaultTextureId;
++        batch->draws[i].blendMode = RLGL.State.currentBlendMode;
+     }
+ 
+     // Reset active texture units for next batch
+@@ -4356,7 +4447,7 @@
+ #if defined(GRAPHICS_API_OPENGL_33) || defined(GRAPHICS_API_OPENGL_ES2)
+     if (RLGL.State.currentShaderId != id)
+     {
+-        rlDrawRenderBatch(RLGL.currentBatch);
++        if (RLGL.State.vertexCounter > 0) rlDrawRenderBatch(RLGL.currentBatch);  // VITA: niente flush a vuoto
+         RLGL.State.currentShaderId = id;
+         RLGL.State.currentShaderLocs = locs;
+     }
+--- a/src/rtextures.c	2026-05-23 11:31:06
++++ b/src/rtextures.c	2026-11-01 21:22:25
+@@ -4545,26 +4545,14 @@
+ 
+             rlColor4ub(tint.r, tint.g, tint.b, tint.a);
+             rlNormal3f(0.0f, 0.0f, 1.0f);                          // Normal vector pointing towards viewer
+-
+-            // Top-left corner for texture and quad
+-            if (flipX) rlTexCoord2f((source.x + source.width)/width, source.y/height);
+-            else rlTexCoord2f(source.x/width, source.y/height);
+-            rlVertex2f(topLeft.x, topLeft.y);
+ 
+-            // Bottom-left corner for texture and quad
+-            if (flipX) rlTexCoord2f((source.x + source.width)/width, (source.y + source.height)/height);
+-            else rlTexCoord2f(source.x/width, (source.y + source.height)/height);
+-            rlVertex2f(bottomLeft.x, bottomLeft.y);
+-
+-            // Bottom-right corner for texture and quad
+-            if (flipX) rlTexCoord2f(source.x/width, (source.y + source.height)/height);
+-            else rlTexCoord2f((source.x + source.width)/width, (source.y + source.height)/height);
+-            rlVertex2f(bottomRight.x, bottomRight.y);
+-
+-            // Top-right corner for texture and quad
+-            if (flipX) rlTexCoord2f(source.x/width, source.y/height);
+-            else rlTexCoord2f((source.x + source.width)/width, source.y/height);
+-            rlVertex2f(topRight.x, topRight.y);
++            // VS: stessi vertici e coordinate di prima (in alto a sinistra, in basso a sinistra, in basso a destra, in alto
++            // a destra), scritti in un colpo da rlQuad4
++            float u0 = source.x/width, u1 = (source.x + source.width)/width, v0 = source.y/height, v1 = (source.y + source.height)/height;
++            if (flipX) { float t = u0; u0 = u1; u1 = t; }
++            const float xy[8] = { topLeft.x, topLeft.y, bottomLeft.x, bottomLeft.y, bottomRight.x, bottomRight.y, topRight.x, topRight.y };
++            const float uv[8] = { u0, v0, u0, v1, u1, v1, u1, v0 };
++            rlQuad4(xy, uv);
+ 
+         rlEnd();
+         rlSetTexture(0);
+--- a/src/config.h	2026-05-23 11:31:06
++++ b/src/config.h	2026-10-25 19:51:58
+@@ -36,7 +36,7 @@
+ #define SUPPORT_MODULE_RTEXTURES        1
+ #define SUPPORT_MODULE_RTEXT            1       // WARNING: It requires SUPPORT_MODULE_RTEXTURES to load sprite font textures
+ #define SUPPORT_MODULE_RMODELS          1
+-//#define SUPPORT_MODULE_RAUDIO           1
++#define SUPPORT_MODULE_RAUDIO           1
+ 
+ //------------------------------------------------------------------------------------
+ // Module: rcore - Configuration Flags
+@@ -246,7 +246,7 @@
+ // Desired audio fileformats to be supported for loading
+ #define SUPPORT_FILEFORMAT_WAV          1
+ #define SUPPORT_FILEFORMAT_OGG          1
+-//#define SUPPORT_FILEFORMAT_MP3          1
++#define SUPPORT_FILEFORMAT_MP3          1
+ //#define SUPPORT_FILEFORMAT_QOA          1
+ //#define SUPPORT_FILEFORMAT_FLAC         1
+ //#define SUPPORT_FILEFORMAT_XM           1
+--- a/src/platforms/rcore_vita.c	2026-05-23 11:31:06
++++ b/src/platforms/rcore_vita.c	2026-10-25 19:51:58
+@@ -1079,7 +1079,7 @@
+ int InitPlatform(void)
+ {
+     vglSetSemanticBindingMode(VGL_MODE_POSTPONED);
+-    vglInitWithCustomThreshold(0, 960, 544, 8 * 1024 * 1024, 0, 0, 26 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
++    vglInitWithCustomThreshold(0, 960, 544, 8 * 1024 * 1024, 0, 0, 26 * 1024 * 1024, SCE_GXM_MULTISAMPLE_NONE);  // VITA: niente MSAA (pixel art; costava GPU a ogni frame)
+     
+     //SDL_setenv("VITA_DISABLE_TOUCH_FRONT", "1", 1);
+     SDL_setenv("VITA_DISABLE_TOUCH_BACK", "1", 1);
