@@ -10,6 +10,16 @@ the 76 base weapons with evolutions and Limit Break, the 22 Arcanas, relics,
 golden eggs, the shop, the collection, the bestiary, achievements, Inverse
 and Hyper modes, the endings and credits, and saves in 30 languages.
 
+![Gameplay](screenshots/gameplay.gif)
+
+| | |
+|---|---|
+| ![Main menu](screenshots/01-main-menu.png) | ![Stage selection](screenshots/02-stage-select.png) |
+| ![Gameplay](screenshots/03-gameplay.png) | ![Level up](screenshots/04-level-up.png) |
+
+*Captured from the desktop preview build, which runs the same game code at the
+Vita's 960x544. Frame rate on the real console is covered under Known Issues.*
+
 ## Changelog
 
 **v0.9 beta** - first public release: the whole base game, chest videos in
@@ -17,10 +27,11 @@ the final stage played by the Vita's hardware decoder, 60 fps in normal play.
 
 ## Official Game Download
 
-Vampire Survivors is on Steam. **This port does not include the game**: no
-graphics, sounds, music, text or data from it are in this repository or in
-the VPK. You need your own copy, and you extract the data from it yourself
-with the setup tool below.
+Vampire Survivors is on Steam. **This port does not include the game**: its
+graphics, sounds, music, text and data are not in the VPK. You need your own
+copy, and you extract the data from it yourself with the setup tool below. The
+only exceptions are the LiveArea images, made from the game's official artwork,
+and the screenshots in this README.
 
 ## Setup Instructions For End Users
 
@@ -87,8 +98,37 @@ drop it into `$VITASDK/arm-vita-eabi/lib/`.
 
 The desktop build reads its data from `$VS_DATA` (default `gamedata/`).
 
+## Credits
+
+- **poncle** for making Vampire Survivors. Please buy it, you need it anyway
+- **Richard Davey / Photon Storm** for [Phaser](https://github.com/phaserjs/phaser):
+  `src/phaser.c` is a C translation of the parts of Phaser 3.55.2 the game uses
+- **Rex** for [phaser3-rex-plugins](https://github.com/rexrainbow/phaser3-rex-plugins)
+  (ShatterImage), and **ironwallaby** for delaunay-fast
+- **Rinnegatamante** for [vitaGL](https://github.com/Rinnegatamante/vitaGL), the
+  [raylib 5.5 Vita port](https://github.com/Rinnegatamante/raylib-5.5-vita) and
+  ShaRKBR33D
+- **Ramon Santamaria (raysan5)** for [raylib](https://github.com/raysan5/raylib)
+- **Northfear** for the [SDL2 Vita port](https://github.com/Northfear/SDL)
+- **Dave Gamble and contributors** for [cJSON](https://github.com/DaveGamble/cJSON)
+- **The [VitaSDK](https://vitasdk.org) team** for the toolchain, and **TheFloW**
+  for VitaShell and the groundwork the Vita homebrew scene rests on
+- **Fabrice Bellard and Charlie Gordon** for QuickJS, **PetterS** for its
+  [Python bindings](https://github.com/PetterS/quickjs), and the
+  **[FFmpeg](https://ffmpeg.org)**,
+  **[imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg)** and
+  **[PyInstaller](https://pyinstaller.org)** projects, all used by the setup tool
+
+Licenses and notices are in `THIRD_PARTY_NOTICES.md`.
+
+## Disclaimer
+
+This is an unofficial, non-commercial fan project, not affiliated with or
+endorsed by poncle.
+
 ## License
 
 The source code of this port is released under the MIT License (see
-`LICENSE`). Vampire Survivors and everything in it belong to poncle; none of
-the game's data is part of this repository.
+`LICENSE`). Vampire Survivors and everything in it belong to poncle; the
+game's data is not part of this repository, and the LiveArea images and
+screenshots stay theirs too.
