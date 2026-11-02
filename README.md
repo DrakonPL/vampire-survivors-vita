@@ -36,7 +36,8 @@ and the screenshots in this README.
 ## Setup Instructions For End Users
 
 1. **Get the Phaser build.** In Steam, right-click Vampire Survivors,
-   Properties, Betas, and pick `old-engine`. Let it download.
+   Properties, Betas. Enter the access code `PhaserVersion2023`, pick
+   `old-engine` and let it download.
 
 2. **Run the setup tool** for your computer (Windows, macOS or Linux / Steam
    Deck; you can find it with each release). It finds your copy of the game on
