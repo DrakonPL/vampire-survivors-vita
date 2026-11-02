@@ -28849,7 +28849,7 @@ static void FinalFireworksScene_draw(void) {
     float fw = FE_fixedW(), pw = 0.95f * fw, ph = 0.2f * 0.8f * DEFAULT_H, TLx = 0.5f * W - 0.5f * fw;
     float gx0 = -TLx - 0.025f * fw - pw, gx1 = TLx + 0.025f * fw, gx = gx0 + (gx1 - gx0) * lerp01(t, 0xfa0, 0x96);
     if (FE.tClick >= 0) gx = gx1 + (1.5f * W - gx1) * lerp01(t, FE.tClick, 0x96);
-    float py = 0.5f * H + 0.5f * 0.8f * DEFAULT_H - ph - 0xa;
+    float py = 0.5f * (H - ph);  // Vita: centrato (l'originale lo tiene in basso, 0.5*H + 0.4*DEFAULT_H - ph - 10)
     if (FE.tClick < 0 || t < FE.tClick + 0x96) {
         nine("frame1_c2.png", 12, (Rectangle){ gx, py, pw, ph }, WHITE);
         char who[160] = "";
